@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"sync"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
@@ -26,7 +25,6 @@ type Store interface {
 
 type storeImpl struct {
 	conn *pgx.Conn
-	mu   sync.RWMutex
 }
 
 // NewStore ...

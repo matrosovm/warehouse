@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
 	"github.com/matrosovm/warehouse/internal/pkg/domain"
 	"github.com/matrosovm/warehouse/internal/pkg/helpers"
 )
@@ -30,10 +31,19 @@ func (s *storeImpl) ReserveProducts(filter *domain.Filter) (map[uint64]bool, err
 
 	query, values := builder.MustSql()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	tx, err := s.conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+        return nil, err
+    }
+    defer func() {
+        if err != nil {
+            tx.Rollback(ctx)
+        } else {
+            tx.Commit(ctx)
+        }
+    }()
 
-	rows, err := s.conn.Query(ctx, query, values...)
+	rows, err := tx.Query(ctx, query, values...)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +97,7 @@ func (s *storeImpl) ReserveProducts(filter *domain.Filter) (map[uint64]bool, err
 				Where(squirrel.Eq{"product_id": id})
 
 			query, values = builder.MustSql()
-			_, err = s.conn.Exec(ctx, query, values...)
+			_, err = tx.Exec(ctx, query, values...)
 			if err != nil {
 				log.Printf("update: %v", err)
 				res.Store(id, false)
@@ -120,10 +130,19 @@ func (s *storeImpl) ReleaseOfReserved(filter *domain.Filter) (map[uint64]bool, e
 
 	query, values := builder.MustSql()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	tx, err := s.conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+        return nil, err
+    }
+    defer func() {
+        if err != nil {
+            tx.Rollback(ctx)
+        } else {
+            tx.Commit(ctx)
+        }
+    }()
 
-	rows, err := s.conn.Query(ctx, query, values...)
+	rows, err := tx.Query(ctx, query, values...)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +196,7 @@ func (s *storeImpl) ReleaseOfReserved(filter *domain.Filter) (map[uint64]bool, e
 				Where(squirrel.Eq{"product_id": id})
 
 			query, values = builder.MustSql()
-			_, err = s.conn.Exec(ctx, query, values...)
+			_, err = tx.Exec(ctx, query, values...)
 			if err != nil {
 				log.Printf("update: %v", err)
 				res.Store(id, false)
@@ -202,9 +221,6 @@ func (s *storeImpl) RemainingProducts(warehouseID *uint64) (map[uint64]uint64, e
 		GroupBy("product_id")
 
 	query, values := builder.MustSql()
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	rows, err := s.conn.Query(context.Background(), query, values...)
 	if err != nil {
